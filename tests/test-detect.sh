@@ -173,7 +173,8 @@ kit_assert_eq '.venv/bin/python' "$(kit_python_interpreter "$R")" 'a project .ve
 R="$(fixture pynovenv)"
 kit_assert_matches "$(kit_python_interpreter "$R")" '^python3?$' 'with no venv it falls back to python3'
 kit_plan_python "$R" 'python3' 0 0
-kit_assert_contains "$(plan_notes)" 'No project virtual environment' 'and warns that results are not reproducible'
+kit_assert_contains "$(plan_notes)" 'No project environment was found' 'and warns that results are not reproducible'
+kit_assert_contains "$(plan_notes)" 'conda' 'and mentions conda among the places it looked'
 
 kit_section 'a project that INTENDS tests but cannot run them'
 
@@ -226,6 +227,53 @@ touch "$R/tests/test_thing.py"
 kit_plan_python "$R" 'python3' 0 1
 kit_assert_contains "$(plan_full)" 'pytest -q' 'with pytest installed the gate really runs the tests'
 kit_assert_not_contains "$(plan_notes)" 'NOT RUNNING' 'and there is nothing to warn about'
+
+kit_section 'conda environments'
+
+# Found on a real project: 63 passing tests, every dependency installed in a
+# conda env, and the kit generated a syntax-only gate reporting "pytest is not
+# installed" - because it only ever looked for .venv/venv/env. A whole class of
+# Python project was invisible to it.
+
+# An ACTIVE conda env wins: the user has said which one they mean.
+R="$(fixture conda_active)"
+FAKE="$WORK/fake-conda"; mkdir -p "$FAKE/bin"
+printf '#!/bin/sh\nexit 0\n' > "$FAKE/bin/python"; chmod +x "$FAKE/bin/python"
+kit_assert_eq "$FAKE/bin/python" "$(CONDA_PREFIX="$FAKE" kit_python_interpreter "$R")" \
+  'an ACTIVE conda env is used'
+
+# A project .venv still beats an active conda env - it is more specific to the
+# project than whatever the shell happens to have activated.
+R="$(fixture conda_vs_venv)"; mkdir -p "$R/.venv/bin"
+printf '#!/bin/sh\n' > "$R/.venv/bin/python"; chmod +x "$R/.venv/bin/python"
+kit_assert_eq '.venv/bin/python' "$(CONDA_PREFIX="$FAKE" kit_python_interpreter "$R")" \
+  'a project .venv still beats an active conda env'
+
+# An env NAMED after the project directory, discovered under a conda root.
+CONDA_HOME="$WORK/condahome"
+mkdir -p "$CONDA_HOME/envs/named_proj/bin"
+printf '#!/bin/sh\n' > "$CONDA_HOME/envs/named_proj/bin/python"
+chmod +x "$CONDA_HOME/envs/named_proj/bin/python"
+R="$WORK/named_proj"; mkdir -p "$R"
+kit_assert_eq "$CONDA_HOME/envs/named_proj/bin/python" \
+  "$(CONDA_ROOT="$CONDA_HOME" kit_python_interpreter "$R")" \
+  'a conda env named after the project directory is found'
+
+# ...but only when it really exists. No guessing.
+R2="$WORK/no_such_env"; mkdir -p "$R2"
+kit_assert_matches "$(CONDA_ROOT="$CONDA_HOME" kit_python_interpreter "$R2")" '^python3?$' \
+  'a project with no matching conda env falls back to python3'
+
+# The plan must NAME the conda interpreter, because it is invisible from the
+# project tree - nothing in the repo says which python the gate uses.
+kit_plan_python "$R" "$CONDA_HOME/envs/named_proj/bin/python" 0 1
+kit_assert_contains "$(plan_notes)" 'conda environment' 'the plan says a conda env is being used'
+kit_assert_contains "$(plan_notes)" 'machine-specific' 'and warns the path is machine-specific'
+kit_assert_not_contains "$(plan_notes)" 'No project environment was found' \
+  'and does NOT also claim no environment was found'
+
+# With pytest present in that env, a real test step appears.
+kit_assert_contains "$(plan_full)" 'pytest -q' 'and the gate really runs the tests'
 
 kit_section 'python: the syntax checker actually works'
 

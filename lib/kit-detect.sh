@@ -217,6 +217,27 @@ kit_python_interpreter() {  # kit_python_interpreter <root>
   if [[ -n "${VIRTUAL_ENV:-}" && -x "$VIRTUAL_ENV/bin/python" ]]; then
     printf '%s' "$VIRTUAL_ENV/bin/python"; return 0
   fi
+
+  # Conda. Looking only for .venv/ is how a project with a perfectly good
+  # environment gets a syntax-only gate: found in the wild on a repo with 63
+  # passing tests and every dependency installed in a conda env, where the kit
+  # generated no test step at all and reported "pytest is not installed".
+  #
+  # An ACTIVE environment wins - the user has said which one they mean.
+  if [[ -n "${CONDA_PREFIX:-}" && -x "$CONDA_PREFIX/bin/python" ]]; then
+    printf '%s' "$CONDA_PREFIX/bin/python"; return 0
+  fi
+  # Otherwise an env named after the project directory. That is a convention,
+  # not a guarantee, so it is only consulted when nothing more explicit exists,
+  # and the caller still PROBES it for ruff/pytest rather than assuming.
+  local name; name="$(basename -- "$root")"
+  local base
+  for base in "${CONDA_ROOT:-}" "${_CONDA_ROOT:-}" "$HOME/miniforge3" \
+              "$HOME/miniconda3" "$HOME/anaconda3" "$HOME/mambaforge" "/opt/conda"; do
+    [[ -n "$base" && -x "$base/envs/$name/bin/python" ]] && {
+      printf '%s' "$base/envs/$name/bin/python"; return 0; }
+  done
+
   # python3, not python: on a modern distro `python` may not exist at all.
   kit_have python3 && { printf 'python3'; return 0; }
   printf 'python'
@@ -290,7 +311,11 @@ kit_plan_python() {  # kit_plan_python <root> <interpreter> <has_ruff 0|1> <has_
   fi
 
   if [[ "$py" == 'python' || "$py" == 'python3' ]]; then
-    KIT_PLAN_NOTES+=('No project virtual environment was found (.venv/venv/env); the gate uses whatever "python3" resolves to. Create a venv for reproducible results.')
+    KIT_PLAN_NOTES+=('No project environment was found (.venv/venv/env, an active virtualenv, or a conda env named after this directory); the gate uses whatever "python3" resolves to. Create one for reproducible results.')
+  elif [[ "$py" == */envs/* || "$py" == "${CONDA_PREFIX:-__none__}"/* ]]; then
+    # Naming it matters: a conda env is not visible from the project tree, so a
+    # reader six months from now cannot tell which interpreter the gate uses.
+    KIT_PLAN_NOTES+=("The gate runs the conda environment at \"$py\". That path is absolute and machine-specific - if you move machines or rename the env, update it in gate.json.")
   fi
   KIT_PLAN_NOTES+=('The syntax step (.claude/py-syntax.py) compiles project-owned sources in memory. It skips virtual environments, dependency stores, caches, VCS metadata and build output - it does not write bytecode and does not walk .venv.')
   KIT_PLAN_CONFIGURED=1
