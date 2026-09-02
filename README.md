@@ -229,9 +229,10 @@ docs/
 ## Tests
 
 ```bash
-./tests/run-all.sh          # 513 assertions, ~70s, no network
+./tests/run-all.sh          # 515 assertions, ~70s, offline
 ./tests/run-all.sh guard    # one suite
-./tests/run-all.sh tools    # +37 assertions; downloads real binaries
+./tests/run-all.sh tools    # +41; downloads real binaries
+./tests/run-all.sh live     # +10; drives REAL Claude Code, costs tokens
 ./tests/run-all.sh --list
 ```
 
@@ -240,6 +241,31 @@ pinned binaries, verifies them against the manifest, runs them to confirm the
 version, proves the **aarch64** assets are real arm64 ELF binaries, and — the
 assertion that matters — points the installer at a real asset with a **wrong**
 hash and confirms it refuses and deletes it.
+
+`live` is excluded because it drives real Claude Code and spends tokens. It is
+the only suite that can catch **the hook contract moving underneath the kit**,
+so run it after a Claude Code upgrade. Each case puts a sentinel word in a
+hook's output and checks whether the agent echoes it back — an agent that
+repeats the sentinel saw the message; one that doesn't, didn't.
+
+### What `live` established (Claude Code 2.1.258)
+
+| Stop hook output | Blocks? |
+|---|---|
+| `{"decision":"block","reason":…}` — **what the kit uses** | **yes** |
+| `{"hookSpecificOutput":{…,"reason":…}}` | **no** |
+| exit 2, reason on stderr | yes |
+| `{"hookSpecificOutput":{…,"additionalContext":…}}` | no — allows, injects context |
+
+That second row is why this suite exists. A documentation review of this same
+API recommended the `hookSpecificOutput.reason` form; adopting it would have
+left every hook running, reporting success, and **gating nothing**. The suite
+now asserts it does *not* block, so if a future version starts honouring it,
+the test fails and says the contract moved.
+
+Also verified live: **`PreToolUse` exit 2 denies a tool call even under
+`--dangerously-skip-permissions`** — the entire premise of the autonomous
+guard, now measured rather than assumed.
 
 No test framework required — the kit installs on bare boxes, and a suite that
 needs a package manager to run is a suite that doesn't get run where it matters.
@@ -268,6 +294,13 @@ Claims in this README are backed by runs, not by assertion:
 - **Your settings** — the installer suite runs against a copy of the machine's
   real `settings.json` and asserts install-then-uninstall returns it
   byte-identical.
+- **Real Claude Code** — the hooks were driven by an actual `claude -p` session,
+  not just by their contract. Claude edited a file, the Stop hook ran the gate
+  exactly once and passed; Claude then wrote a file with a syntax error, the
+  Stop hook **blocked**, and Claude reported back
+  *"`src/bad.py(1): invalid syntax` … attempt 1 of 3"* — reading the
+  diagnostic, the log path, and the retry bound. On the second identical
+  failure the loop gave up rather than blocking again, exactly as designed.
 
 Three bugs were found by that last exercise alone, none of which any fixture
 had caught: a `--dry-run` that printed "wrote" having written nothing, a Python

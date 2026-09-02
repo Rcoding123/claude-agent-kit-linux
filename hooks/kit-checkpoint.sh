@@ -33,11 +33,27 @@ set -uo pipefail
 
 # stdout is the JSON contract Claude Code parses. Anything else written there
 # corrupts it, so every diagnostic in this file goes to stderr or nowhere.
+#
+# THESE TWO FORMS WERE VERIFIED AGAINST REAL CLAUDE CODE (2.1.258), not assumed.
+# That matters, because a plausible reading of the docs says a Stop hook should
+# block via hookSpecificOutput.reason - and it measurably DOES NOT:
+#
+#   {"decision":"block","reason":...}                        -> BLOCKS      (used here)
+#   {"hookSpecificOutput":{...,"reason":...}}                 -> does NOT block
+#   exit 2 with the reason on stderr                          -> BLOCKS
+#   {"hookSpecificOutput":{...,"additionalContext":...}}      -> allows, injects context
+#
+# Each was tested by driving `claude -p` with a sentinel word in the reason and
+# checking whether the agent echoed it back. "Fixing" this to the
+# hookSpecificOutput form would silently disable the entire gate: the hook would
+# still run, still report success, and never block anything.
 emit_block() {  # emit_block <reason>
   jq -cn --arg r "$1" '{decision: "block", reason: $r}'
   exit 0
 }
 emit_context() {  # emit_context <text>
+  # Allow the stop, but put the report in front of the agent. Verified reaching
+  # the model: the test agent quoted the injected sentinel back verbatim.
   jq -cn --arg t "$1" \
     '{hookSpecificOutput: {hookEventName: "Stop", additionalContext: $t}}'
   exit 0

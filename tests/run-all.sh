@@ -24,16 +24,20 @@ fi
 # Ordered cheapest-and-most-fundamental first: if the process runner is broken,
 # knowing that before reading forty gate failures saves real time.
 #
-# `tools` is EXCLUDED by default because it downloads real binaries over the
-# network. Run it explicitly (`run-all.sh tools`) when changing the manifest or
-# the install path.
+# `tools` and `live` are EXCLUDED by default. `tools` downloads real binaries;
+# `live` drives real Claude Code and spends real tokens. Run them explicitly:
+#
+#   run-all.sh tools    after changing the manifest or the install path
+#   run-all.sh live     after a Claude Code upgrade - it is the only suite that
+#                       can catch the hook CONTRACT moving underneath the kit
 SUITES=(process gate detect settings hooks guard newproject installer)
-ALL_SUITES=(process gate detect settings hooks guard newproject installer tools)
+ALL_SUITES=(process gate detect settings hooks guard newproject installer tools live)
 
 if [[ "${1:-}" == '--list' ]]; then
   printf 'available suites:\n'
   for s in "${ALL_SUITES[@]}"; do
     if [[ " ${SUITES[*]} " == *" $s "* ]]; then printf '  %s\n' "$s"
+    elif [[ "$s" == 'live' ]]; then printf '  %s    (real Claude Code; costs tokens; not run by default)\n' "$s"
     else printf '  %s   (network; not run by default)\n' "$s"; fi
   done
   exit 0

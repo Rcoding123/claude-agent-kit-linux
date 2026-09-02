@@ -8,6 +8,13 @@
 # here is why" - even in bypass mode - and feeds the message back to the agent
 # so it self-corrects.
 #
+# THAT PREMISE IS MEASURED, NOT ASSUMED. Verified against Claude Code 2.1.258:
+# a PreToolUse hook exiting 2 under --dangerously-skip-permissions denied the
+# tool call outright, and the agent reported back "it was blocked before
+# executing ... this is a policy hook configured in your environment, not
+# something I can bypass". If that ever stops holding, this whole layer is
+# decorative, so re-run tests/test-guard.sh and the live check after an upgrade.
+#
 # This is a DENYLIST of irreversible actions, not an allowlist. Reversible work
 # runs at full speed; only the things you cannot undo are stopped.
 #
