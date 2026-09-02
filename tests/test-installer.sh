@@ -41,8 +41,19 @@ export CLAUDE_CONFIG_DIR="$SANDBOX"
 # Seed with the real settings.json if there is one; otherwise a representative
 # fixture with a foreign hook in it.
 if [[ -f "$REAL" ]] && jq -e . "$REAL" >/dev/null 2>&1; then
-  cp "$REAL" "$SANDBOX/settings.json"
-  SEED='the real settings.json from this machine'
+  # Strip any kit hooks already present. Once the kit is INSTALLED on this
+  # machine the real settings.json contains them, and seeding with those means
+  # the install below finds nothing to add (so takes no backup) and the
+  # round-trip compares "kit present" against "kit removed". Both failures are
+  # artefacts of the seed, not of the code. This suite exists to prove the kit
+  # round-trips a user's OWN configuration, so the seed must be that
+  # configuration without us in it.
+  jq '(.hooks // {}) |= with_entries(
+        .value |= map(select(((.hooks // []) | map(.command // "")
+                              | any(test("kit-(selffix|checkpoint|guard)"))) | not)))
+      | (.hooks // {}) |= with_entries(select((.value | length) > 0))' \
+     "$REAL" > "$SANDBOX/settings.json"
+  SEED='the real settings.json from this machine (kit hooks stripped)'
 else
   cat > "$SANDBOX/settings.json" <<'EOF'
 {

@@ -206,7 +206,18 @@ kit_section 'against the REAL settings.json on this machine'
 REAL="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
 if [[ -f "$REAL" ]] && jq -e . "$REAL" >/dev/null 2>&1; then
   S="$WORK/real-copy.json"
-  cp "$REAL" "$S"
+  # Strip any kit hooks already present. Once the kit is INSTALLED on this
+  # machine the real settings.json contains them, and seeding with those would
+  # make the round-trip assertion below compare "kit hooks present" against
+  # "kit hooks correctly removed" - a guaranteed failure that says nothing
+  # about the code. The point of this suite is that the kit round-trips a
+  # user's OWN configuration, so the seed must be that configuration without us
+  # in it.
+  jq '(.hooks // {}) |= with_entries(
+        .value |= map(select(((.hooks // []) | map(.command // "")
+                              | any(test("kit-(selffix|checkpoint|guard)"))) | not)))
+      | (.hooks // {}) |= with_entries(select((.value | length) > 0))' \
+     "$REAL" > "$S"
   BEFORE_KEYS="$(jq -r 'keys | join(",")' "$S")"
   BEFORE_HOOKS="$(jq -S '.hooks' "$S")"
 
