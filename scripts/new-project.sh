@@ -175,7 +175,11 @@ else
       maxRepairAttempts: 3,
       notes: $notes
     }' | kit_json_write "$GATE" || exit 1
-  kit_ok "wrote $GATE"
+  # kit_json_write handles dry-run itself and reports "would write", so this
+  # line must not also claim the file was written - a dry run that says "wrote"
+  # is exactly the kind of small dishonesty that makes people stop trusting
+  # --dry-run and just run the real thing to see what happens.
+  kit_is_dry_run || kit_ok "wrote $GATE"
 fi
 
 # --- helpers the gate references ---------------------------------------------
@@ -247,5 +251,9 @@ EOF
   kit_ok "created $MD"
 fi
 
-kit_ok 'done - restart Claude Code in this folder'
+if kit_is_dry_run; then
+  kit_ok 'dry run complete - NOTHING was written'
+else
+  kit_ok 'done - restart Claude Code in this folder'
+fi
 exit 0

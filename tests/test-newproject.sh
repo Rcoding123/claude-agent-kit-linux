@@ -115,12 +115,23 @@ printf '#!/bin/bash\nif [ 1 ; then\n' > "$P/broken.sh"
 bash "$GATE_BIN" full "$P" >/dev/null 2>&1
 kit_assert_ne '0' "$?" 'and fails on a parse error'
 
-kit_section 'dry run changes nothing'
+kit_section 'dry run changes nothing, and says so honestly'
 
 P="$WORK/dry"; mkdir -p "$P"; touch "$P/Cargo.toml"
-bash "$NP" "$P" --quiet --dry-run >/dev/null 2>&1
+DRYOUT="$(bash "$NP" "$P" --dry-run 2>&1 | sed 's/\x1b\[[0-9;]*m//g')"
 kit_assert_file_absent "$P/.claude/gate.json" '--dry-run writes no gate'
 kit_assert_file_absent "$P/CLAUDE.md" '--dry-run writes no CLAUDE.md'
+kit_assert_file_absent "$P/.claude" '--dry-run creates no .claude directory'
+
+# Found by running --dry-run against a real project: it printed "wrote
+# .../gate.json" and "done - restart Claude Code" having written nothing. Small,
+# but it is the kind of dishonesty that teaches people to distrust --dry-run and
+# just run the real thing to see what happens - which defeats the flag entirely.
+kit_assert_not_contains "$DRYOUT" '[ok] wrote' '--dry-run never claims it WROTE a file'
+kit_assert_contains "$DRYOUT" 'would write' 'it says what it WOULD write'
+kit_assert_contains "$DRYOUT" 'NOTHING was written' 'and ends by saying nothing was written'
+kit_assert_not_contains "$DRYOUT" 'restart Claude Code' \
+  'and does not tell you to restart for changes that were never made'
 
 kit_section 'gitignore'
 

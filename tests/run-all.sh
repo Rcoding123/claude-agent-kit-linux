@@ -23,11 +23,19 @@ fi
 
 # Ordered cheapest-and-most-fundamental first: if the process runner is broken,
 # knowing that before reading forty gate failures saves real time.
-SUITES=(process gate detect settings hooks newproject installer)
+#
+# `tools` is EXCLUDED by default because it downloads real binaries over the
+# network. Run it explicitly (`run-all.sh tools`) when changing the manifest or
+# the install path.
+SUITES=(process gate detect settings hooks guard newproject installer)
+ALL_SUITES=(process gate detect settings hooks guard newproject installer tools)
 
 if [[ "${1:-}" == '--list' ]]; then
   printf 'available suites:\n'
-  for s in "${SUITES[@]}"; do printf '  %s\n' "$s"; done
+  for s in "${ALL_SUITES[@]}"; do
+    if [[ " ${SUITES[*]} " == *" $s "* ]]; then printf '  %s\n' "$s"
+    else printf '  %s   (network; not run by default)\n' "$s"; fi
+  done
   exit 0
 fi
 

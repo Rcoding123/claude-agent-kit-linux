@@ -264,7 +264,29 @@ kit_plan_python() {  # kit_plan_python <root> <interpreter> <has_ruff 0|1> <has_
   if (( has_pytest )); then
     KIT_PLAN_FULL+=("$q -m pytest -q")
   else
-    KIT_PLAN_NOTES+=('pytest is not installed in this interpreter, so no test step was generated.')
+    # "pytest is not installed" is true but weak when the project plainly INTENDS
+    # to run tests - a [tool.pytest.ini_options] section, a pytest dependency, or
+    # a tests/ tree full of test_*.py. Saying only "not installed" for a project
+    # with 20 test files reads as a shrug, and the gate silently validates less
+    # than the author thinks. Detect the intent and make the note actionable.
+    local intends_tests=0 evidence=''
+    if [[ -f "$root/pyproject.toml" ]] \
+       && grep -qE '^\s*\[tool\.pytest' "$root/pyproject.toml" 2>/dev/null; then
+      intends_tests=1; evidence='pyproject.toml configures pytest'
+    elif [[ -f "$root/pytest.ini" || -f "$root/tox.ini" ]]; then
+      intends_tests=1; evidence='a pytest/tox config file is present'
+    elif [[ -f "$root/pyproject.toml" ]] \
+         && grep -qE '"pytest[><=~]' "$root/pyproject.toml" 2>/dev/null; then
+      intends_tests=1; evidence='pyproject.toml declares a pytest dependency'
+    elif kit_any_file "$root" 4 'test_*.py' '*_test.py'; then
+      intends_tests=1; evidence='the project contains test files'
+    fi
+
+    if (( intends_tests )); then
+      KIT_PLAN_NOTES+=("THIS PROJECT HAS TESTS THAT THE GATE IS NOT RUNNING: $evidence, but pytest is not importable by \"$py\", so no test step was generated. The gate therefore checks syntax only. Install pytest into the interpreter this project uses and re-run new-project.sh, or add \"$q -m pytest -q\" to gate.json yourself.")
+    else
+      KIT_PLAN_NOTES+=('pytest is not installed in this interpreter, so no test step was generated.')
+    fi
   fi
 
   if [[ "$py" == 'python' || "$py" == 'python3' ]]; then
@@ -552,7 +574,12 @@ while IFS= read -r -d '' f; do
   checked=$((checked+1))
   if ! err="$(bash -n "$f" 2>&1)"; then
     bad=$((bad+1))
-    printf '%s: %s\n' "${f#"$ROOT"/}" "$err"
+    rel="${f#"$ROOT"/}"
+    # bash -n prints the ABSOLUTE path it was given, so the raw message carries
+    # the machine's full path twice over. That is noise in an agent's context
+    # and it makes two runs of the same failure look different. Strip the root
+    # so the diagnostic reads "oops.sh: line 3: ..." like the Python checker's.
+    printf '%s: %s\n' "$rel" "${err//$ROOT\//}"
   fi
 done < <(find "$ROOT" \
            \( -name .git -o -name node_modules -o -name .venv -o -name venv \

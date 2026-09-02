@@ -175,6 +175,58 @@ kit_assert_matches "$(kit_python_interpreter "$R")" '^python3?$' 'with no venv i
 kit_plan_python "$R" 'python3' 0 0
 kit_assert_contains "$(plan_notes)" 'No project virtual environment' 'and warns that results are not reproducible'
 
+kit_section 'a project that INTENDS tests but cannot run them'
+
+# Found by pointing the kit at a real project: ML-Viz declares
+# [tool.pytest.ini_options] and pytest>=8.3 and has three test files, but pytest
+# was not importable by the system interpreter - so the gate covered syntax only
+# and said merely "pytest is not installed". For a project with twenty test
+# files that note reads as a shrug, and the author does not notice the gate is
+# validating far less than they think. Intent is detectable; say so loudly.
+
+R="$(fixture pytest_configured)"
+printf '[tool.pytest.ini_options]\ntestpaths = ["tests"]\n' > "$R/pyproject.toml"
+kit_plan_python "$R" 'python3' 0 0
+kit_assert_contains "$(plan_notes)" 'NOT RUNNING' \
+  'a pyproject that CONFIGURES pytest gets a loud note, not a shrug'
+kit_assert_contains "$(plan_notes)" 'syntax only' \
+  'and says exactly what the gate does cover'
+kit_assert_contains "$(plan_notes)" 'gate.json' \
+  'and says how to fix it'
+
+R="$(fixture pytest_declared)"
+printf 'dependencies = ["pytest>=8.3"]\n' > "$R/pyproject.toml"
+kit_plan_python "$R" 'python3' 0 0
+kit_assert_contains "$(plan_notes)" 'NOT RUNNING' \
+  'a declared pytest dependency also counts as intent'
+
+R="$(fixture pytest_files)"; mkdir -p "$R/tests"
+touch "$R/pyproject.toml" "$R/tests/test_thing.py"
+kit_plan_python "$R" 'python3' 0 0
+kit_assert_contains "$(plan_notes)" 'NOT RUNNING' \
+  'test files alone count as intent'
+
+R="$(fixture pytest_ini)"; touch "$R/pyproject.toml" "$R/pytest.ini"
+kit_plan_python "$R" 'python3' 0 0
+kit_assert_contains "$(plan_notes)" 'NOT RUNNING' 'a pytest.ini counts as intent'
+
+# A project with NO sign of tests keeps the quiet note - the loud one would be
+# noise, and a warning that fires everywhere is a warning nobody reads.
+R="$(fixture no_tests)"; touch "$R/pyproject.toml"
+printf 'x = 1\n' > "$R/app.py"
+kit_plan_python "$R" 'python3' 0 0
+kit_assert_not_contains "$(plan_notes)" 'NOT RUNNING' \
+  'a project with no tests gets the quiet note, not the alarm'
+kit_assert_contains "$(plan_notes)" 'pytest is not installed' 'but still explains itself'
+
+# And when pytest IS available there is a real test step and no warning at all.
+R="$(fixture pytest_present)"; mkdir -p "$R/tests"
+printf '[tool.pytest.ini_options]\n' > "$R/pyproject.toml"
+touch "$R/tests/test_thing.py"
+kit_plan_python "$R" 'python3' 0 1
+kit_assert_contains "$(plan_full)" 'pytest -q' 'with pytest installed the gate really runs the tests'
+kit_assert_not_contains "$(plan_notes)" 'NOT RUNNING' 'and there is nothing to warn about'
+
 kit_section 'python: the syntax checker actually works'
 
 R="$(fixture pysyntax)"; mkdir -p "$R/.claude"
@@ -297,6 +349,14 @@ printf '#!/bin/bash\nif [ 1 ; then\n' > "$R/bad.sh"
 OUT="$( cd "$R" && ./.claude/sh-syntax.sh 2>&1 )"; RC=$?
 kit_assert_eq '1' "$RC" 'the shell syntax checker fails on a parse error'
 kit_assert_contains "$OUT" 'bad.sh' 'and names the offending script'
+# `bash -n` prints the absolute path it was handed, so the raw message carried
+# the machine's full path - noise in an agent's context, and it makes the same
+# failure look different from two different checkouts. Caught by running the
+# gate against a real project and reading the output rather than just its exit
+# code. The Python checker already reported relative paths; these now agree.
+kit_assert_not_contains "$OUT" "$R" \
+  'and does NOT leak the absolute project path into the diagnostic'
+kit_assert_not_contains "$OUT" "$WORK" 'nor the temp root'
 
 kit_section 'unknown'
 

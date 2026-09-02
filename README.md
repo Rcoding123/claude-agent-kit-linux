@@ -166,7 +166,7 @@ pre-commit hook or CI step.
 |---|---|---|
 | Rust | `Cargo.toml` | clippy doesn't fail the gate by default (says how to change it) |
 | C/C++ | presets → `CMakeLists.txt` → meson → Makefile | **no build system inferred → no commands at all**; no `make test` without a real target |
-| Python | `pyproject.toml`, `requirements.txt`, loose `.py` | no ruff/pytest step unless importable in *that* interpreter |
+| Python | `pyproject.toml`, `requirements.txt`, loose `.py` | no ruff/pytest step unless importable in *that* interpreter — but if the project **has** tests it cannot run, it says so loudly rather than shrugging |
 | Node | `package.json` | **the npm placeholder `test` script is never gated** (it always exits 1) |
 | Go | `go.mod` | admits `gofmt -l` exits 0 and shows the enforcing form |
 | .NET | `.sln`/`.csproj` | no `dotnet test` without a real test project |
@@ -215,18 +215,31 @@ hooks/
 scripts/
   new-project.sh           per-repo initializer -> kit-new-project
   kit-gate                 manual fast/full gate runner
+autonomous/                unattended layer (optional, opt-in)
+  kit-guard.sh             PreToolUse hard-block for irreversible actions
+  install-autonomous.sh    wires it, ahead of rtk's hook
 tests/
   run-all.sh               every suite, one summary
-  test-{process,gate,detect,settings,hooks,newproject,installer}.sh
+  test-{process,gate,detect,settings,hooks,guard,newproject,installer,tools}.sh
+docs/
+  HOW-IT-WORKS.md          the token model and design rationale
+  AUTONOMOUS.md            what the guard blocks and why
 ```
 
 ## Tests
 
 ```bash
-./tests/run-all.sh          # 367 assertions, ~80s
-./tests/run-all.sh process  # one suite
+./tests/run-all.sh          # 513 assertions, ~70s, no network
+./tests/run-all.sh guard    # one suite
+./tests/run-all.sh tools    # +37 assertions; downloads real binaries
 ./tests/run-all.sh --list
 ```
+
+`tools` is excluded by default because it hits the network. It downloads both
+pinned binaries, verifies them against the manifest, runs them to confirm the
+version, proves the **aarch64** assets are real arm64 ELF binaries, and — the
+assertion that matters — points the installer at a real asset with a **wrong**
+hash and confirms it refuses and deletes it.
 
 No test framework required — the kit installs on bare boxes, and a suite that
 needs a package manager to run is a suite that doesn't get run where it matters.
@@ -236,6 +249,44 @@ checkers are executed against deliberately broken fixtures; the hooks are driven
 through their actual stdin/stdout JSON contract; the installer runs against a
 **copy of this machine's real `settings.json`** in a sandboxed `HOME`, and
 asserts that install-then-uninstall returns it byte-identical.
+
+## What has actually been verified
+
+Claims in this README are backed by runs, not by assertion:
+
+- **Kill boundary** — 0 leaked processes across 10 timeout runs, on *both* the
+  cgroup and process-group paths.
+- **Pinned downloads** — both binaries really download, verify, extract and
+  report the pinned version; a deliberately wrong hash is refused and the file
+  deleted; a 404 fails cleanly.
+- **aarch64** — the arm64 assets download, match their hashes, and unpack to
+  genuine `ELF … ARM aarch64` binaries (verified cross-arch from x86_64).
+- **Real projects** — pointed at four real repositories on the author's machine.
+  Detection was correct on all four; the generated gates **passed** on the real
+  code and **failed** on deliberately broken code, naming the offending file
+  every time.
+- **Your settings** — the installer suite runs against a copy of the machine's
+  real `settings.json` and asserts install-then-uninstall returns it
+  byte-identical.
+
+Three bugs were found by that last exercise alone, none of which any fixture
+had caught: a `--dry-run` that printed "wrote" having written nothing, a Python
+gate that stayed silent about a project with 21 test files it could not run, and
+a shell diagnostic that leaked absolute paths into the agent's context.
+
+## Unattended operation (optional)
+
+Want to start a task and walk away? See [`docs/AUTONOMOUS.md`](docs/AUTONOMOUS.md).
+
+```bash
+./autonomous/install-autonomous.sh
+```
+
+A PreToolUse guard hard-blocks irreversible actions **without asking** — because
+on an unattended box a prompt nobody answers is worse than useless. It matches
+argument-positionally, so `git commit -m "clean up the deploy script"` runs fine
+while `git status && terraform apply` is refused. It fails **closed**, and it
+registers ahead of RTK's hook so it inspects what you actually typed.
 
 ## Uninstall
 
@@ -257,6 +308,6 @@ it would do.
 | Arg quoting | `CommandLineToArgvW` rules, ~40 lines | bash arrays; module not needed |
 | Archives | zip | tar.gz, multi-arch (x86_64 + aarch64) |
 | PATH | user environment variable | shell rc, detected per shell |
-| Autonomous layer | included | **not yet ported** — the guard's blocklist needs real Linux rules (`rm -rf`, `dd`, `systemctl`), not a transliteration |
+| Autonomous layer | included | ported, with **Linux-specific rules** — `rm -rf`, `dd`/`mkfs`, `chmod -R` on system paths, `systemctl stop ssh`, `iptables -F`, `curl \| sh` — rather than a transliteration of the Windows blocklist |
 
 RTK is Apache-2.0, open source, no account/API key/telemetry-by-default.
