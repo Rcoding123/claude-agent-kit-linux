@@ -135,6 +135,24 @@ kit_assert_contains "$OUT" 'kit-checkpoint.sh      ok' 'doctor reports the insta
 kit_assert_contains "$OUT" 'registered'                'doctor reports the registration'
 kit_assert_contains "$OUT" 'kill boundary'             'doctor reports which kill boundary is available'
 
+kit_section 'doctor reports the KIT\'s binaries, not the system ones'
+
+# The acceptance run caught this: doctor printed /usr/bin/rg's version straight
+# after installing a different one into ~/.local/bin, because BIN_DIR is not on
+# the PATH of the shell running the installer. Cosmetic for doctor; for the
+# install path it meant a matching system copy could make the installer skip
+# placing its own binary while still reporting success.
+mkdir -p "$HOME/.local/bin"
+printf '#!/bin/sh\necho "ripgrep 15.2.0"\n' > "$HOME/.local/bin/rg"
+chmod +x "$HOME/.local/bin/rg"
+
+OUT="$(bash "$INSTALL" doctor 2>&1)"
+kit_assert_contains "$OUT" "$HOME/.local/bin/rg" \
+  "doctor names the KIT's own binary path, not one from \$PATH"
+kit_assert_not_contains "$OUT" '/usr/bin/rg' \
+  'and does not report a system copy when the kit has its own'
+rm -f "$HOME/.local/bin/rg"
+
 kit_section 'read-only agents may not carry a write tool'
 
 # The installer asserts this rather than trusting the file. Break one and

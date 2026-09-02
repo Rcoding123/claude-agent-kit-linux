@@ -77,6 +77,27 @@ kit_tool_version() {  # kit_tool_version <executable>
   return 1
 }
 
+# Where a tool the kit manages actually lives.
+#
+# NOT plain `command -v`: that searches $PATH, and the kit's own bin directory is
+# usually NOT on the $PATH of the shell running the installer - it was only just
+# added, and a login shell has to be restarted to see it. So `command -v rg`
+# finds /usr/bin/rg, and two things go wrong:
+#
+#   - `doctor` reports the SYSTEM binary's version right after installing a
+#     different one, which reads as though the install did nothing.
+#   - worse, if the system copy happens to match the pinned version, the
+#     installer decides the tool is 'present' and never places its own. The
+#     install reports success and ~/.local/bin stays empty.
+#
+# The kit's own copy wins when it exists; otherwise fall back to $PATH, which is
+# the right answer for "is this tool available at all".
+kit_tool_path() {  # kit_tool_path <bin name> <install dir>
+  local bin="$1" dir="$2"
+  [[ -n "$dir" && -x "$dir/$bin" ]] && { printf '%s' "$dir/$bin"; return 0; }
+  command -v "$bin" 2>/dev/null || true
+}
+
 # Download + verify + extract + place. Fails closed at every step.
 kit_install_pinned_tool() {  # kit_install_pinned_tool <manifest> <tool> <install dir>
   local manifest="$1" tool="$2" install_dir="$3"

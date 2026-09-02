@@ -85,6 +85,42 @@ kit_assert_fails 'an absent directory is absent'        kit_on_path '/nope' '/us
 # The naive substring test would pass the /opt/bin2 case above and silently skip
 # adding the directory, leaving the installed binaries unreachable.
 
+kit_section 'the kit reports on ITS OWN copy, not a system one'
+
+# Found in the acceptance run: `doctor` printed the SYSTEM rg's version right
+# after installing a different one, because it used `command -v` - and the kit's
+# bin directory is not on the PATH of the shell running the installer (it was
+# only just added; a login shell has to restart to see it).
+#
+# The cosmetic half is confusing. The other half is not: if a system copy
+# happens to MATCH the pinned version, kit_tool_action returns 'present' and the
+# installer never places its own binary. The install reports success and the bin
+# directory stays empty.
+FAKEBIN="$WORK/fakebin"; mkdir -p "$FAKEBIN"
+printf '#!/bin/sh\necho "ripgrep 9.9.9"\n' > "$FAKEBIN/rg"
+chmod +x "$FAKEBIN/rg"
+
+kit_assert_eq "$FAKEBIN/rg" "$(kit_tool_path rg "$FAKEBIN")" \
+  "the kit's own copy is preferred over anything on PATH"
+
+# With no copy of its own it falls back to PATH - the right answer for
+# "is this tool available at all".
+EMPTY="$WORK/emptybin"; mkdir -p "$EMPTY"
+FALLBACK="$(kit_tool_path rg "$EMPTY")"
+if [[ -z "$FALLBACK" ]] || [[ "$FALLBACK" != "$EMPTY/rg" ]]; then
+  kit_pass 'with no kit copy it falls back to PATH'
+else
+  kit_fail_test 'with no kit copy it falls back to PATH' "got $FALLBACK"
+fi
+
+kit_assert_eq '' "$(kit_tool_path definitely-not-a-real-tool-xyz "$EMPTY")" \
+  'a tool that exists nowhere resolves to nothing'
+
+# A non-executable file in the bin directory is not a usable tool.
+printf 'not a binary\n' > "$EMPTY/rtk"
+NONEXEC="$(kit_tool_path rtk "$EMPTY")"
+kit_assert_ne "$EMPTY/rtk" "$NONEXEC" 'a non-executable file is not treated as the installed tool'
+
 kit_section 'refusing what cannot be verified'
 
 # An arch with no pinned hash must be refused rather than downloaded.

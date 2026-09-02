@@ -102,7 +102,7 @@ doctor() {
     for tool in $(jq -r '.tools | keys[]' "$manifest" 2>/dev/null); do
       want="$(kit_tool_field "$manifest" "$tool" version)"
       local bin; bin="$(kit_tool_field "$manifest" "$tool" bin)"
-      path="$(command -v "$bin" 2>/dev/null || true)"
+      path="$(kit_tool_path "$bin" "$BIN_DIR")"
       if [[ -n "$path" ]]; then
         have="$(kit_tool_version "$path" 2>/dev/null || printf 'unknown')"
         if [[ "$have" == "$want" ]]; then
@@ -218,7 +218,10 @@ install_kit() {
     for tool in $(jq -r '.tools | keys[]' "$manifest" 2>/dev/null); do
       bin="$(kit_tool_field "$manifest" "$tool" bin)"
       want="$(kit_tool_field "$manifest" "$tool" version)"
-      path="$(command -v "$bin" 2>/dev/null || true)"
+      # kit_tool_path, not `command -v`: BIN_DIR is not yet on this shell's
+      # PATH, so command -v would find a system copy and - if its version
+      # happened to match - skip installing the kit's own entirely.
+      path="$(kit_tool_path "$bin" "$BIN_DIR")"
       have=''
       [[ -n "$path" ]] && have="$(kit_tool_version "$path" 2>/dev/null || true)"
       action="$(kit_tool_action 1 "$path" "$have" "$want" "$FORCE")"
