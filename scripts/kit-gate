@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# kit-gate - run a project's gate by hand.
+#
+# The same code path the Stop hook uses, so what you see here is exactly what
+# will be enforced at completion. Running it manually is the cheap way to find
+# out whether a gate is honest before you rely on it.
+#
+# Usage:
+#   kit-gate [fast|full] [path]
+#   kit-gate --show          print the configured gate and exit
+#
+# Exit code is the gate's: 0 clean, nonzero when a command failed, so it drops
+# straight into a pre-commit hook or CI step.
+
+set -uo pipefail
+
+SCRIPT_DIR="$(cd -P "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+# Runs from two places: in the repo as scripts/kit-gate (lib/ one level up), and
+# installed as ~/.local/bin/kit-gate (libraries in ~/.claude/kit-lib). Honour
+# CLAUDE_CONFIG_DIR rather than hardcoding ~/.claude - a user who has moved
+# their config should not get a tool that silently cannot find itself.
+for candidate in \
+  "$(dirname -- "$SCRIPT_DIR")/lib" \
+  "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/kit-lib" \
+  "$SCRIPT_DIR/../kit-lib"
+do
+  [[ -f "$candidate/kit-gate.sh" ]] && { LIB="$(cd -P "$candidate" && pwd)"; break; }
+done
+if [[ -z "${LIB:-}" ]]; then
+  printf 'kit-gate: cannot find the kit libraries\n' >&2
+  printf '  -> re-run install.sh, or run this script from inside the kit repository\n' >&2
+  exit 2
+fi
+KIT_ROOT="$(dirname -- "$LIB")"
+source "$LIB/kit-gate.sh"
+
+LEVEL='fast'
+START="$PWD"
+SHOW=0
+while (( $# > 0 )); do
+  case "$1" in
+    fast|full) LEVEL="$1"; shift ;;
+    --show)    SHOW=1; shift ;;
+    -h|--help) printf 'Usage: kit-gate [fast|full] [path]\n       kit-gate --show\n'; exit 0 ;;
+    *)         START="$1"; shift ;;
+  esac
+done
+
+ROOT="$(kit_find_project_root "$START")" || {
+  printf 'kit-gate: no .claude/gate.json found at or above %s\n' "$START" >&2
+  printf '  -> run new-project.sh in the project root first\n' >&2
+  exit 2
+}
+
+if ! kit_gate_config "$ROOT"; then
+  printf 'kit-gate: %s\n' "$KIT_GATE_REASON" >&2
+  exit 2
+fi
+
+if (( SHOW )); then
+  printf 'project:  %s\n' "$ROOT"
+  printf 'language: %s\n' "$KIT_GATE_LANGUAGE"
+  printf 'timeout:  %ss per command\n' "$KIT_GATE_TIMEOUT"
+  printf 'fast:\n'; for c in "${KIT_GATE_FAST[@]:-}"; do [[ -n "$c" ]] && printf '  %s\n' "$c"; done
+  printf 'full:\n'; for c in "${KIT_GATE_FULL[@]:-}"; do [[ -n "$c" ]] && printf '  %s\n' "$c"; done
+  exit 0
+fi
+
+printf '[gate] %s in %s\n' "$LEVEL" "$ROOT" >&2
+
+if kit_run_gate "$ROOT" "$LEVEL"; then
+  if [[ -n "$KIT_GATE_RESULT_REASON" ]]; then
+    printf '[gate] %s\n' "$KIT_GATE_RESULT_REASON" >&2
+    exit 0
+  fi
+  printf '[gate] PASS (%s command(s))\n' "$KIT_GATE_RESULT_RAN" >&2
+  # A passing FULL gate is the same event the Stop hook acts on, so clear the
+  # dirty flag here too. Otherwise running the gate by hand, seeing it pass, and
+  # then stopping would run the identical suite a second time.
+  [[ "$LEVEL" == 'full' ]] && kit_state_clear_dirty "$ROOT"
+  exit 0
+fi
+
+printf '[gate] FAIL\n' >&2
+kit_concise_diagnostics 60 >&2
+exit "${KIT_PROC_EXIT_CODE:-1}"

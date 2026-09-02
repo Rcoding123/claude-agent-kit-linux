@@ -1,0 +1,11 @@
+# Backups the kit takes before overwriting anything
+*.bak-*
+
+# Kit runtime state, if the kit is ever pointed at its own repo
+.claude/kit-state.json
+.claude/gate-logs/
+
+# Editor / OS noise
+*.swp
+*~
+.DS_Store

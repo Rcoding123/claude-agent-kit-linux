@@ -1,0 +1,74 @@
+{
+  "manifestVersion": 1,
+  "comment": [
+    "Pinned external tools for Linux. The installer downloads EXACTLY these",
+    "versions and refuses to install anything whose SHA-256 does not match. It",
+    "never resolves 'latest' at install time, so two installs a month apart",
+    "produce the same bytes.",
+    "",
+    "Each sha256 below was corroborated from two independent vendor-published",
+    "sources before being pinned: the GitHub release asset 'digest' field, and",
+    "the vendor's own checksum file shipped in the same release. Both agreed.",
+    "",
+    "Assets are keyed by uname -m. musl builds are preferred where the vendor",
+    "ships one: a musl static binary runs on any glibc vintage, which matters",
+    "because this kit is expected to install on old LTS images and inside",
+    "minimal containers alike.",
+    "",
+    "To bump a version: update version/asset/url, fetch the vendor checksum,",
+    "verify it from both sources, then update sha256. Never paste a hash you",
+    "computed from a file you already downloaded - that verifies nothing."
+  ],
+  "tools": {
+    "ripgrep": {
+      "version": "15.2.0",
+      "bin": "rg",
+      "archive": "tar.gz",
+      "purpose": "fast search backend that RTK's grep/find filters shell out to",
+      "arch": {
+        "x86_64": {
+          "asset": "ripgrep-15.2.0-x86_64-unknown-linux-musl.tar.gz",
+          "url": "https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ripgrep-15.2.0-x86_64-unknown-linux-musl.tar.gz",
+          "sha256": "33e15bcf1624b25cdd2a55813a47a2f95dbe126268203e76aa6a585d1e7b149c",
+          "verifiedFrom": [
+            "https://api.github.com/repos/BurntSushi/ripgrep/releases/tags/15.2.0 (asset.digest)",
+            "https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ripgrep-15.2.0-x86_64-unknown-linux-musl.tar.gz.sha256"
+          ]
+        },
+        "aarch64": {
+          "asset": "ripgrep-15.2.0-aarch64-unknown-linux-gnu.tar.gz",
+          "url": "https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ripgrep-15.2.0-aarch64-unknown-linux-gnu.tar.gz",
+          "sha256": "",
+          "verifiedFrom": [],
+          "note": "Not pinned. Populate from the vendor checksum file before installing on arm64; the installer refuses an empty hash rather than downloading something it cannot verify."
+        }
+      }
+    },
+    "rtk": {
+      "version": "0.47.0",
+      "bin": "rtk",
+      "archive": "tar.gz",
+      "purpose": "CLI output compression proxy; installs the global Bash rewrite hook",
+      "arch": {
+        "x86_64": {
+          "asset": "rtk-x86_64-unknown-linux-musl.tar.gz",
+          "url": "https://github.com/rtk-ai/rtk/releases/download/v0.47.0/rtk-x86_64-unknown-linux-musl.tar.gz",
+          "sha256": "7c0175d867f96c4f8f788479af82ca8f0990ea944226268834d224a525186fb7",
+          "verifiedFrom": [
+            "https://api.github.com/repos/rtk-ai/rtk/releases/latest (asset.digest)",
+            "https://github.com/rtk-ai/rtk/releases/download/v0.47.0/checksums.txt"
+          ]
+        },
+        "aarch64": {
+          "asset": "rtk-aarch64-unknown-linux-gnu.tar.gz",
+          "url": "https://github.com/rtk-ai/rtk/releases/download/v0.47.0/rtk-aarch64-unknown-linux-gnu.tar.gz",
+          "sha256": "960ceb5f1f5f0b0939b32b5b1d41dec6d9a7113137b0703c68dca0d169a260fc",
+          "verifiedFrom": [
+            "https://api.github.com/repos/rtk-ai/rtk/releases/latest (asset.digest)",
+            "https://github.com/rtk-ai/rtk/releases/download/v0.47.0/checksums.txt"
+          ]
+        }
+      }
+    }
+  }
+}
