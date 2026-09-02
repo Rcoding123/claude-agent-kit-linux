@@ -12,11 +12,10 @@
 # runs at full speed; only the things you cannot undo are stopped.
 #
 # ---------------------------------------------------------------------------
-# WHY THE RULES ARE NOT A TRANSLATION OF THE WINDOWS ONES
+# WHAT THIS BLOCKS, AND WHY THOSE THINGS
 # ---------------------------------------------------------------------------
-# The Windows guard blocks force-push, deploys, and live-trading commands. Those
-# port directly. But Linux's irreversible actions are a different set entirely,
-# and they are mostly about the MACHINE rather than about a remote:
+# The rules are chosen from what is irreversible on a Linux box, which is mostly
+# about the MACHINE rather than about a remote:
 #
 #   rm -rf on a root-ish path       - no recycle bin; this is final
 #   dd / mkfs / fdisk to a device   - destroys a filesystem in one command
@@ -25,10 +24,13 @@
 #   systemctl stop/disable on ssh   - same, and worse
 #   shutdown / reboot               - an unattended box does not come back
 #   curl | sh                       - executes code nobody reviewed
-#   history rewrites over main      - loses work that only exists there
+#   push / force-push to main       - bypasses review; rewrites shared history
+#   publish / deploy commands       - a published version cannot be recalled
 #
-# A transliteration of the Windows blocklist would have covered exactly none of
-# those, while carrying rules about NinjaTrader that mean nothing here.
+# These are generic. A denylist is only as good as its fit to the machine it
+# runs on, so treat this as a starting point and add whatever is irreversible in
+# YOUR stack - a deploy script, a migration, anything that touches production
+# data. docs/AUTONOMOUS.md says where.
 #
 # ---------------------------------------------------------------------------
 # MATCHING IS ARGUMENT-POSITIONAL, NOT SUBSTRING
