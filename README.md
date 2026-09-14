@@ -229,7 +229,7 @@ docs/
 ## Tests
 
 ```bash
-./tests/run-all.sh          # 515 assertions, ~70s, offline
+./tests/run-all.sh          # 524 assertions, ~65s, offline
 ./tests/run-all.sh guard    # one suite
 ./tests/run-all.sh tools    # +41; downloads real binaries
 ./tests/run-all.sh live     # +10; drives REAL Claude Code, costs tokens
